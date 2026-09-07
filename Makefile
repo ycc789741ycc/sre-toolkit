@@ -33,7 +33,8 @@ help:
 	@echo ""
 	@echo "  make infra-status       Show which infra tools are installed (macOS via Homebrew)"
 	@echo "  make infra-install      Dry-run: show which infra tools would be installed"
-	@echo "  make infra-install-apply    Install missing infra tools (skips ones already installed)"
+	@echo "  make infra-install-apply    Install missing infra tools (skips ones already installed),"
+	@echo "                              then wire up their shell completions via the alias installer"
 	@echo ""
 	@echo "HOST/SSH_USER are read from .env (see .env.example), or override on the"
 	@echo "command line, e.g. make vscode-status HOST=other-host SSH_USER=someone"
@@ -64,4 +65,7 @@ infra-status infra-install:
 	@bash $(INFRA_SCRIPT)
 
 infra-install-apply:
-	@bash $(INFRA_SCRIPT) --apply
+	-@bash $(INFRA_SCRIPT) --apply
+	@echo ""
+	@echo "wiring up shell completions for the installed CLI tools..."
+	@bash $(ALIAS_SCRIPT) $(ALIAS_ARGS) --apply

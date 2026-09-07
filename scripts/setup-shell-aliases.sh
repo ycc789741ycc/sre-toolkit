@@ -19,6 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ALIASES_FILE="$REPO_DIR/shell/aliases.sh"
+COMPLETIONS_FILE="$REPO_DIR/shell/completions.sh"
 
 BEGIN_MARKER="# >>> sre-toolkit aliases >>>"
 END_MARKER="# <<< sre-toolkit aliases <<<"
@@ -92,12 +93,19 @@ if [ ! -f "$ALIASES_FILE" ]; then
   exit 1
 fi
 
+if [ ! -f "$COMPLETIONS_FILE" ]; then
+  echo "error: completions file not found: $COMPLETIONS_FILE" >&2
+  exit 1
+fi
+
 # --- current state -----------------------------------------------------------
 
 BLOCK="$BEGIN_MARKER
 # Managed by sre-toolkit/scripts/setup-shell-aliases.sh - edit shell/aliases.sh
-# to change the aliases, or re-run the script to repoint this block.
+# or shell/completions.sh to change what's loaded, or re-run the script to
+# repoint this block.
 [ -r \"$ALIASES_FILE\" ] && . \"$ALIASES_FILE\"
+[ -r \"$COMPLETIONS_FILE\" ] && . \"$COMPLETIONS_FILE\"
 $END_MARKER"
 
 installed=false
@@ -118,6 +126,7 @@ echo "platform:     $PLATFORM"
 echo "shell:        $SHELL_NAME"
 echo "rc file:      $RC_FILE$([ -f "$RC_FILE" ] || echo '  (does not exist yet)')"
 echo "aliases file: $ALIASES_FILE"
+echo "completions file: $COMPLETIONS_FILE"
 if [ "$installed" = true ]; then
   echo "status:       block present$([ "$up_to_date" = true ] && echo ', up to date' || echo ', points elsewhere / outdated')"
 else
@@ -126,6 +135,9 @@ fi
 echo ""
 echo "aliases defined in $ALIASES_FILE:"
 grep -E '^[[:space:]]*alias[[:space:]]' "$ALIASES_FILE" | sed 's/^/  /' || echo "  (none)"
+echo ""
+echo "completions wired in $COMPLETIONS_FILE (loaded only if the tool is installed):"
+grep -oE '^\s*command -v [a-zA-Z0-9_-]+' "$COMPLETIONS_FILE" | awk '{print "  " $3}' || echo "  (none)"
 echo ""
 
 # --- strip / write -----------------------------------------------------------

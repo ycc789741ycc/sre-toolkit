@@ -84,6 +84,15 @@ CASKS=(
   "iterm2:iTerm2"
 )
 
+# oh-my-zsh + theme/plugins, matching the current ~/.zshrc setup:
+#   ZSH_THEME="agnoster"
+#   plugins=(git)
+OMZ_DIR="$HOME/.oh-my-zsh"
+ZSHRC="${ZDOTDIR:-$HOME}/.zshrc"
+OMZ_INSTALL_URL="https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh"
+DESIRED_ZSH_THEME='"agnoster"'
+DESIRED_PLUGINS="(git)"
+
 to_install_formulae=()
 to_install_casks=()
 
@@ -116,8 +125,44 @@ for entry in "${CASKS[@]}"; do
 done
 
 echo ""
+echo "checking oh-my-zsh..."
 
-if [ ${#to_install_formulae[@]} -eq 0 ] && [ ${#to_install_casks[@]} -eq 0 ]; then
+omz_needs_install=false
+if [ -d "$OMZ_DIR" ]; then
+  echo "  [skip]    oh-my-zsh (already installed)"
+else
+  echo "  [install] oh-my-zsh"
+  omz_needs_install=true
+fi
+
+theme_needs_update=false
+plugins_needs_update=false
+if [ -f "$ZSHRC" ]; then
+  current_theme="$(grep -E '^ZSH_THEME=' "$ZSHRC" | tail -1 || true)"
+  current_plugins="$(grep -E '^plugins=' "$ZSHRC" | tail -1 || true)"
+else
+  current_theme=""
+  current_plugins=""
+fi
+
+if [ "$current_theme" = "ZSH_THEME=$DESIRED_ZSH_THEME" ]; then
+  echo "  [skip]    ZSH_THEME=$DESIRED_ZSH_THEME (already set in $ZSHRC)"
+else
+  echo "  [set]     ZSH_THEME=$DESIRED_ZSH_THEME (currently: ${current_theme:-<unset>})"
+  theme_needs_update=true
+fi
+
+if [ "$current_plugins" = "plugins=$DESIRED_PLUGINS" ]; then
+  echo "  [skip]    plugins=$DESIRED_PLUGINS (already set in $ZSHRC)"
+else
+  echo "  [set]     plugins=$DESIRED_PLUGINS (currently: ${current_plugins:-<unset>})"
+  plugins_needs_update=true
+fi
+
+echo ""
+
+if [ ${#to_install_formulae[@]} -eq 0 ] && [ ${#to_install_casks[@]} -eq 0 ] \
+  && [ "$omz_needs_install" = false ] && [ "$theme_needs_update" = false ] && [ "$plugins_needs_update" = false ]; then
   echo "everything is already installed: nothing to do."
   exit 0
 fi
@@ -135,6 +180,36 @@ fi
 if [ ${#to_install_casks[@]} -gt 0 ]; then
   echo "installing casks: ${to_install_casks[*]}"
   brew install --cask "${to_install_casks[@]}"
+fi
+
+if [ "$omz_needs_install" = true ]; then
+  echo "installing oh-my-zsh..."
+  # Non-interactive: keep the existing .zshrc (just append/edit into it below),
+  # don't launch zsh afterwards, and don't change the login shell.
+  KEEP_ZSHRC=yes RUNZSH=no CHSH=no sh -c "$(curl -fsSL "$OMZ_INSTALL_URL")" "" --unattended
+fi
+
+if [ "$theme_needs_update" = true ] || [ "$plugins_needs_update" = true ]; then
+  if [ ! -f "$ZSHRC" ]; then
+    echo "note: $ZSHRC did not exist; creating it"
+    touch "$ZSHRC"
+  fi
+  if [ "$theme_needs_update" = true ]; then
+    if grep -qE '^ZSH_THEME=' "$ZSHRC"; then
+      sed -i '' -E "s|^ZSH_THEME=.*|ZSH_THEME=$DESIRED_ZSH_THEME|" "$ZSHRC"
+    else
+      printf '\nZSH_THEME=%s\n' "$DESIRED_ZSH_THEME" >>"$ZSHRC"
+    fi
+    echo "set ZSH_THEME=$DESIRED_ZSH_THEME in $ZSHRC"
+  fi
+  if [ "$plugins_needs_update" = true ]; then
+    if grep -qE '^plugins=' "$ZSHRC"; then
+      sed -i '' -E "s|^plugins=.*|plugins=$DESIRED_PLUGINS|" "$ZSHRC"
+    else
+      printf '\nplugins=%s\n' "$DESIRED_PLUGINS" >>"$ZSHRC"
+    fi
+    echo "set plugins=$DESIRED_PLUGINS in $ZSHRC"
+  fi
 fi
 
 echo ""

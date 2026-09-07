@@ -14,8 +14,11 @@ ALIAS_SHELL ?=
 RC_FILE ?=
 ALIAS_ARGS := $(if $(ALIAS_SHELL),--shell $(ALIAS_SHELL)) $(if $(RC_FILE),--rc-file $(RC_FILE))
 
+INFRA_SCRIPT := scripts/install-infra-tools.sh
+
 .PHONY: help vscode-status vscode-clean vscode-clean-apply \
-        aliases-status aliases-install aliases-install-apply aliases-uninstall-apply
+        aliases-status aliases-install aliases-install-apply aliases-uninstall-apply \
+        infra-status infra-install infra-install-apply
 
 help:
 	@echo "sre-toolkit targets:"
@@ -28,11 +31,17 @@ help:
 	@echo "  make aliases-install-apply    Source shell/aliases.sh from your shell rc file"
 	@echo "  make aliases-uninstall-apply  Remove the sre-toolkit block from your rc file"
 	@echo ""
+	@echo "  make infra-status       Show which infra tools are installed (macOS via Homebrew)"
+	@echo "  make infra-install      Dry-run: show which infra tools would be installed"
+	@echo "  make infra-install-apply    Install missing infra tools (skips ones already installed)"
+	@echo ""
 	@echo "HOST/SSH_USER are read from .env (see .env.example), or override on the"
 	@echo "command line, e.g. make vscode-status HOST=other-host SSH_USER=someone"
 	@echo ""
 	@echo "The alias targets auto-detect macOS/Linux and bash/zsh; override with"
 	@echo "ALIAS_SHELL=zsh or RC_FILE=~/.bashrc if needed."
+	@echo ""
+	@echo "The infra targets auto-detect macOS/Linux; Linux is a placeholder for now."
 	@echo ""
 	@echo "Currently: HOST=$(HOST) SSH_USER=$(SSH_USER)"
 
@@ -50,3 +59,9 @@ aliases-install-apply:
 
 aliases-uninstall-apply:
 	@bash $(ALIAS_SCRIPT) $(ALIAS_ARGS) --uninstall --apply
+
+infra-status infra-install:
+	@bash $(INFRA_SCRIPT)
+
+infra-install-apply:
+	@bash $(INFRA_SCRIPT) --apply

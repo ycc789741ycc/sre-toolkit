@@ -18,3 +18,8 @@ alias glga='git log --graph --oneline --decorate --all'
 
 # Same as glga, with relative dates and authors.
 alias glgp="git log --graph --all --decorate --abbrev-commit --format=tformat:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(auto)%d%C(reset)'"
+
+# --- docker ------------------------------------------------------------------
+# Docker 29's default `docker images` view dropped the build/creation
+# timestamp; this puts it back.
+alias dimg="docker images --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}'"

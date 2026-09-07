@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Report on (default) or clean up stale VS Code Remote-SSH server installs
-# and their zombie process trees on a remote host.
+# on a remote host.
 #
 # VS Code Remote-SSH daemonizes its server per client version (commit hash)
-# under ~/.vscode-server and leaves it running after disconnect so
-# reconnects are fast. If a connection drops uncleanly (VPN/network blip,
-# laptop sleep) instead of closing gracefully, the idle-shutdown timer
-# never starts, and every client update adds another version's worth of
-# leftover processes and ~700MB install. This script finds the newest
-# version directory (by mtime) and treats every other version as stale:
-# it reports them by default, and with --apply kills their process trees
-# and deletes their install directories/binaries/logs.
+# under ~/.vscode-server and may keep multiple versions installed. A server
+# version can still be in use even when it is not the newest directory by
+# mtime (for example, when multiple clients run different VS Code versions).
+#
+# Safety rule: never delete a server version while a process for that version
+# is running. The newest installed version is also kept as a reconnect fallback.
+# Only older, inactive versions are considered stale.
 set -euo pipefail
 
 # Pick up HOST/SSH_USER from .env (next to this script, or in the repo root)
@@ -37,8 +36,8 @@ Usage: vscode-server-cleanup.sh [--host <host>] [--ssh-user <user>] [--apply] [-
 
   --host HOST      Remote host to connect to. Defaults to $HOST from .env.
   --ssh-user USER  SSH user on the remote host. Defaults to $SSH_USER from .env.
-  --apply          Actually kill stale processes and delete old version
-                    installs. Default is a dry-run report only.
+  --apply          Delete old inactive VS Code Server installs. Versions with
+                   running processes are always preserved. Default is dry-run.
   --yes            Skip the confirmation prompt when --apply is set.
   -h, --help       Show this help.
 USAGE
@@ -66,7 +65,7 @@ if [ -n "$SSH_USER" ] && [[ "$HOST" != *"@"* ]]; then
 fi
 
 if [ "$APPLY" = true ] && [ "$YES" != true ]; then
-  read -r -p "This will kill stale VS Code server processes and delete old version installs on $HOST. Continue? [y/N] " ans
+  read -r -p "This will delete old inactive VS Code Server installs on $HOST. Running versions will be preserved. Continue? [y/N] " ans
   case "$ans" in
     y|Y|yes|YES) ;;
     *) echo "Aborted."; exit 1 ;;
@@ -93,22 +92,38 @@ for d in cli/servers/Stable-*/; do
   fi
 done
 newest_hash="${newest#Stable-}"
-echo "-- newest/active version: ${newest_hash:-<none found>} --"
+echo "-- newest installed version: ${newest_hash:-<none found>} --"
+
+has_running_process() {
+  local hash="$1"
+  pgrep -f "$hash" >/dev/null 2>&1
+}
+
+process_count() {
+  local hash="$1"
+  local count
+  count=$(pgrep -fc "$hash" 2>/dev/null || true)
+  printf '%s' "${count:-0}"
+}
 
 echo
 echo "-- version directories --"
 stale_hashes=""
 for d in cli/servers/Stable-*/; do
   [ -d "$d" ] || continue
+  case "$d" in *.staging/) continue ;; esac
+
   base=$(basename "$d")
-  hash="${base%.staging}"
-  hash="${hash#Stable-}"
+  hash="${base#Stable-}"
   size=$(du -sh "$d" 2>/dev/null | cut -f1)
-  if [ "$hash" = "$newest_hash" ]; then
-    echo "  KEEP   $base ($size)"
+
+  if has_running_process "$hash"; then
+    nproc=$(process_count "$hash")
+    echo "  KEEP   $base ($size) - active processes: $nproc"
+  elif [ "$hash" = "$newest_hash" ]; then
+    echo "  KEEP   $base ($size) - newest installed version"
   else
-    nproc=$(pgrep -cf "$base" 2>/dev/null || echo 0)
-    echo "  STALE  $base ($size) - running processes: $nproc"
+    echo "  STALE  $base ($size) - no running processes"
     case " $stale_hashes " in
       *" $hash "*) ;;
       *) stale_hashes="$stale_hashes $hash" ;;
@@ -124,23 +139,22 @@ fi
 
 if [ "${APPLY:-false}" != "true" ]; then
   echo
-  echo "DRY RUN - no changes made. Re-run with --apply to remove the above and kill their processes."
+  echo "DRY RUN - no changes made. Re-run with --apply to remove the inactive versions above."
   exit 0
 fi
 
 echo
 echo "== Applying cleanup =="
 for hash in $stale_hashes; do
-  echo "-- stopping processes for $hash --"
-  pkill -TERM -f "$hash" 2>/dev/null || true
-done
-sleep 3
-for hash in $stale_hashes; do
-  pkill -KILL -f "$hash" 2>/dev/null || true
-done
+  # Re-check immediately before deletion to close the race between the report
+  # and apply phases. A version that became active is skipped unconditionally.
+  if has_running_process "$hash"; then
+    nproc=$(process_count "$hash")
+    echo "-- skipping $hash: version became active ($nproc processes) --"
+    continue
+  fi
 
-for hash in $stale_hashes; do
-  echo "-- removing files for $hash --"
+  echo "-- removing inactive files for $hash --"
   rm -rf "cli/servers/Stable-${hash}" "cli/servers/Stable-${hash}.staging"
   rm -f "code-${hash}" ".cli.${hash}.log"
 done
